@@ -23,11 +23,12 @@ EOF
 }
 
 current_profile() {
-    echo ${AWSCTX_CURRENT_PROFILE:=$AWS_PROFILE}
+  # TODO: handle exit 1
+  ${AWSCLI} configure get default.awsctx.profile
 }
 
 get_profiles() {
-    ${AWSCLI} configure list-profiles
+  ${AWSCLI} configure list-profiles
 }
 
 list_profiles() {
@@ -43,6 +44,8 @@ list_profiles() {
   local cur p_list
   cur="$(current_profile)" || exit_err "error getting current profile"
   p_list=$(get_profiles) || exit_err "error getting profile list"
+
+  echo "Current profile is \"${cur}\".">&2
 
   for c in $p_list; do
   if [[ -n "${_AWSCTX_FORCE_COLOR:-}" || \
@@ -61,26 +64,25 @@ list_profiles() {
 
 switch_profile() {
     local p="${1}"
-    export AWS_PROFILE="czdev"
+    local session="$(${AWSCLI} configure get ${p}.sso_session)"
+    local account="$(${AWSCLI} configure get ${p}.sso_account_id)"
+    local role="$(${AWSCLI} configure get ${p}.sso_role_name)"
+    
+    ${AWSCLI} configure set default.sso_session "${session}"
+    ${AWSCLI} configure set default.sso_account_id "${account}"
+    ${AWSCLI} configure set default.sso_role_name "${role}"
+    ${AWSCLI} configure set default.awsctx.profile "${p}"
+
     echo "Active profile is \"${p}\".">&2
 }
 
-read_profile() {
-  local f
-  f="${AWSCTX_DIR}/profile"
-  [[ -f "${f}" ]] && cat "${f}"
-  return 0
+read_prev_profile() {
+  ${AWSCLI} configure get default.awsctx.prev
 }
 
-save_profile() {
-  mkdir -p "${AWSCTX_DIR}"
-  local f saved
-  f="${AWSCTX_DIR}/profile"
-  saved="$(read_profile)"
-
-  if [[ "${saved}" != "${1}" ]]; then
-    printf %s "${1}" > "${f}"
-  fi
+save_prev_profile() {
+  local p="${1}"
+  ${AWSCLI} configure set default.awsctx.prev "${p}"
 }
 
 set_profile() {
@@ -91,7 +93,7 @@ set_profile() {
     switch_profile "${1}"
 
     if [[ "${prev}" != "${1}" ]]; then
-      save_profile "${prev}"
+      save_prev_profile "${prev}"
     fi
   else
     echo "error: no profile exists with name \"${1}\".">&2
@@ -99,6 +101,18 @@ set_profile() {
   fi    
 }
 
+swap_namespace() {
+  local p
+  p="$(read_prev_profile)" || exit_err "error reading previous profile"
+
+  if [[ -z "${p}" ]]; then
+    echo "error: no previous profile found." >&2
+    exit 1
+  fi
+
+  set_profile "${p}"
+  
+}
 
 main() {
 
@@ -123,7 +137,7 @@ main() {
             current_profile
 
         elif [[ "${1}" == "-" ]]; then
-            echo "Swap back to previous profile"
+            swap_namespace
 
         elif [[ "${1}" =~ ^-(.*) ]]; then
             echo "error: unrecognized flag \"${1}\"" >&2
