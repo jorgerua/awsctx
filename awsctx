@@ -6,6 +6,8 @@
 
 set -eou pipefail
 
+AWSCTX_DIR="${XDG_DATA_HOME:-$HOME/.aws/.awsctx}"
+
 usage() {
   local SELF
   SELF="awsctx"
@@ -20,6 +22,84 @@ USAGE:
 EOF
 }
 
+current_profile() {
+    echo ${AWSCTX_CURRENT_PROFILE:=$AWS_PROFILE}
+}
+
+get_profiles() {
+    ${AWSCLI} configure list-profiles
+}
+
+list_profiles() {
+  local yellow darkbg normal
+  yellow=$(tput setaf 3 || true)
+  darkbg=$(tput setab 0 || true)
+  normal=$(tput sgr0 || true)
+
+  local cur_ctx_fg cur_ctx_bg
+  cur_ctx_fg=${AWSCTX_CURRENT_FGCOLOR:-$yellow}
+  cur_ctx_bg=${AWSCTX_CURRENT_BGCOLOR:-$darkbg}
+
+  local cur p_list
+  cur="$(current_profile)" || exit_err "error getting current profile"
+  p_list=$(get_profiles) || exit_err "error getting profile list"
+
+  for c in $p_list; do
+  if [[ -n "${_AWSCTX_FORCE_COLOR:-}" || \
+       -t 1 && -z "${NO_COLOR:-}" ]]; then
+    # colored output mode
+    if [[ "${c}" = "${cur}" ]]; then
+      echo "${cur_ctx_bg}${cur_ctx_fg}${c}${normal}"
+    else
+      echo "${c}"
+    fi
+  else
+    echo "${c}"
+  fi
+  done
+}
+
+switch_profile() {
+    local p="${1}"
+    export AWS_PROFILE="czdev"
+    echo "Active profile is \"${p}\".">&2
+}
+
+read_profile() {
+  local f
+  f="${AWSCTX_DIR}/profile"
+  [[ -f "${f}" ]] && cat "${f}"
+  return 0
+}
+
+save_profile() {
+  mkdir -p "${AWSCTX_DIR}"
+  local f saved
+  f="${AWSCTX_DIR}/profile"
+  saved="$(read_profile)"
+
+  if [[ "${saved}" != "${1}" ]]; then
+    printf %s "${1}" > "${f}"
+  fi
+}
+
+set_profile() {
+  local prev
+  prev="$(current_profile)" || exit_error "error getting current profile"
+
+  if grep -q ^"${1}"\$ <(get_profiles); then
+    switch_profile "${1}"
+
+    if [[ "${prev}" != "${1}" ]]; then
+      save_profile "${prev}"
+    fi
+  else
+    echo "error: no profile exists with name \"${1}\".">&2
+    exit 1
+  fi    
+}
+
+
 main() {
 
     #check if aws cli is installed
@@ -33,14 +113,14 @@ main() {
     fi
 
     if [[ "$#" -eq 0 ]]; then
-        echo "List profile"
+        list_profiles
     elif [[ "$#" -eq 1 ]]; then
         
         if [[ "${1}" == "-h" || "${1}" == "--help" ]]; then
             usage
 
         elif [[ "${1}" == "-c" || "${1}" == "--current" ]]; then
-            echo "Show current profile"
+            current_profile
 
         elif [[ "${1}" == "-" ]]; then
             echo "Swap back to previous profile"
@@ -50,7 +130,7 @@ main() {
             usage
             exit 1
         else
-            echo "Set profile"
+            set_profile "${1}"
         fi
     else
         echo "Too many arguments" >&2
