@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# AWSCTX is a tool to switch aws profiles context
+
+[[ -n $DEBUG ]] && set -x
+
+set -eou pipefail
+
+usage() {
+  local SELF
+  SELF="awsctx"
+
+  cat <<EOF
+USAGE:
+  $SELF                    : list the profiles in the current credentials file
+  $SELF <NAME>             : change the active namespace of current context
+  $SELF -                  : switch to the previous namespace in this context
+  $SELF -c, --current      : show the current namespace
+  $SELF -h,--help          : show this message
+EOF
+}
+
+main() {
+
+    #check if aws cli is installed
+    if [[ -z "${AWSCLI:-}" ]]; then
+        if hash aws 2> /dev/null; then
+            AWSCLI=aws
+        else
+            echo >&2 "Aws CLI is not installed"
+            exit 1
+        fi
+    fi
+
+    if [[ "$#" -eq 0 ]]; then
+        echo "List profile"
+    elif [[ "$#" -eq 1 ]]; then
+        
+        if [[ "${1}" == "-h" || "${1}" == "--help" ]]; then
+            usage
+
+        elif [[ "${1}" == "-c" || "${1}" == "--current" ]]; then
+            echo "Show current profile"
+
+        elif [[ "${1}" == "-" ]]; then
+            echo "Swap back to previous profile"
+
+        elif [[ "${1}" =~ ^-(.*) ]]; then
+            echo "error: unrecognized flag \"${1}\"" >&2
+            usage
+            exit 1
+        else
+            echo "Set profile"
+        fi
+    else
+        echo "Too many arguments" >&2
+        usage
+        exit 1
+    fi
+
+}
+
+main "$@"
