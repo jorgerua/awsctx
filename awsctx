@@ -23,12 +23,21 @@ EOF
 }
 
 current_profile() {
-  # TODO: handle exit 1
-  ${AWSCLI} configure get default.awsctx.profile
+  ${AWSCLI} configure get default.awsctx.profile || echo ""
 }
 
 get_profiles() {
   ${AWSCLI} configure list-profiles
+}
+
+get_current_profile() {
+  local p=$(current_profile)
+
+  if [[ -n "${p}" ]]; then
+    echo "${p}"
+  else
+    echo "No current profile set.">&2
+  fi
 }
 
 list_profiles() {
@@ -44,8 +53,6 @@ list_profiles() {
   local cur p_list
   cur="$(current_profile)" || exit_err "error getting current profile"
   p_list=$(get_profiles) || exit_err "error getting profile list"
-
-  echo "Current profile is \"${cur}\".">&2
 
   for c in $p_list; do
   if [[ -n "${_AWSCTX_FORCE_COLOR:-}" || \
@@ -77,7 +84,7 @@ switch_profile() {
 }
 
 read_prev_profile() {
-  ${AWSCLI} configure get default.awsctx.prev
+  ${AWSCLI} configure get default.awsctx.prev || echo ""
 }
 
 save_prev_profile() {
@@ -103,7 +110,7 @@ set_profile() {
 
 swap_namespace() {
   local p
-  p="$(read_prev_profile)" || exit_err "error reading previous profile"
+  p="$(read_prev_profile)"
 
   if [[ -z "${p}" ]]; then
     echo "error: no previous profile found." >&2
@@ -111,7 +118,7 @@ swap_namespace() {
   fi
 
   set_profile "${p}"
-  
+
 }
 
 main() {
@@ -134,7 +141,7 @@ main() {
             usage
 
         elif [[ "${1}" == "-c" || "${1}" == "--current" ]]; then
-            current_profile
+            get_current_profile
 
         elif [[ "${1}" == "-" ]]; then
             swap_namespace
